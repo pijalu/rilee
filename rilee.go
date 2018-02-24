@@ -1,48 +1,65 @@
 package rilee
 
-import "fmt"
-
-func Encode(input []int) []int {
-	if len(input) == 0 {
-		return []int{}
-	}
-
-	output := make([]int, 0, len(input))
-	cnt := 1
-	var prev int = input[0]
-
-	for _, i := range input[1:] {
-		if prev == i {
-			cnt++
-		} else {
-			output = append(output, cnt, prev)
-			prev = i
-			cnt = 1
+// Encode encodes a channel of int as RLE to an new channel.
+func Encode(input chan int) chan int {
+	// Since we are going to write pairs, lets make buffer the channel by 2
+	output := make(chan int, 2)
+	go func() {
+		// When done, close the channel
+		defer close(output)
+		cnt := 1
+		prev, ok := <-input
+		if !ok {
+			// Let's consider empty as empty
+			return
 		}
-	}
-	output = append(output, cnt, prev)
+
+		// Process all channel values
+		for current := range input {
+			if prev == current {
+				cnt++
+			} else {
+				output <- cnt
+				output <- prev
+				prev = current
+				cnt = 1
+			}
+		}
+		// Push left over
+		output <- cnt
+		output <- prev
+	}()
 
 	return output
 }
 
-func Decode(input []int) ([]int, error) {
-	if len(input) == 0 {
-		return []int{}, nil
-	}
+// Decode decodes a channel of int (RLE) and return as a channel.
+// if an error occurs during, the boolean pointer return will be set to true
+func Decode(input chan int) (chan int, *bool) {
+	output := make(chan int)
+	decodeError := false
 
-	if len(input)%2 != 0 {
-		return nil, fmt.Errorf("Invalid RLE length: %d", len(input))
-	}
-
-	output := make([]int, 0, len(input))
-	for i := 0; i < len(input); i += 2 {
-		if input[i] <= 0 {
-			return nil, fmt.Errorf("Invalid RLE counter: %d", input[i])
+	go func() {
+		// Close the output channel when we are done
+		defer close(output)
+		for {
+			cnt, ok := <-input
+			// We have decoded everything
+			if !ok {
+				return
+			}
+			value, ok := <-input
+			// We miss a value or the count is non-sense
+			if !ok || cnt <= 0 {
+				decodeError = true
+				return
+			}
+			// Decode !
+			for i := 0; i < cnt; i++ {
+				output <- value
+			}
 		}
-		for j := 0; j < input[i]; j++ {
-			output = append(output, input[i+1])
-		}
-	}
+	}()
 
-	return output, nil
+	return output, &decodeError
 }

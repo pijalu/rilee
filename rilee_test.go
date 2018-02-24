@@ -1,6 +1,7 @@
 package rilee
 
 import (
+	"log"
 	"reflect"
 	"testing"
 )
@@ -8,6 +9,23 @@ import (
 type testCase struct {
 	input    []int
 	expected []int
+}
+
+func toArray(input chan int) []int {
+	result := make([]int, 0, 10)
+	for i := range input {
+		result = append(result, i)
+	}
+	return result
+}
+
+func toChannel(input []int) chan int {
+	result := make(chan int, len(input))
+	defer close(result)
+	for _, i := range input {
+		result <- i
+	}
+	return result
 }
 
 func TestEncode(t *testing.T) {
@@ -22,10 +40,14 @@ func TestEncode(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		actual := Encode(c.input)
+		actual := toArray(
+			Encode(
+				toChannel(
+					c.input)))
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Fatalf("Expected %v but got %v", c.expected, actual)
 		}
+		log.Printf("%v => %v", c.input, actual)
 	}
 }
 
@@ -33,10 +55,13 @@ func TestEncodeLong(t *testing.T) {
 	input := make([]int, 1000)
 	expected := []int{1000, 0}
 
-	actual := Encode(input)
+	actual := toArray(
+		Encode(
+			toChannel(input)))
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("Expected %v but got %v", expected, actual)
 	}
+	//log.Printf("%v => %v", input, actual)
 }
 
 func TestDecode(t *testing.T) {
@@ -54,13 +79,15 @@ func TestDecode(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		actual, err := Decode(c.input)
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
+		actualChan, decodeError := Decode(toChannel(c.input))
+		actual := toArray(actualChan)
+		if *decodeError {
+			t.Fatalf("Error during decode")
 		}
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Fatalf("Expected %v but got %v", c.expected, actual)
 		}
+		log.Printf("%v => %v", c.input, actual)
 	}
 }
 
@@ -70,8 +97,9 @@ func TestDecodeErr(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		_, err := Decode(c)
-		if err == nil {
+		actualChan, decodeError := Decode(toChannel(c))
+		_ = toArray(actualChan)
+		if !*decodeError {
 			t.Fatalf("Expected error but got none !")
 		}
 	}
