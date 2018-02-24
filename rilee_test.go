@@ -104,3 +104,26 @@ func TestDecodeErr(t *testing.T) {
 		}
 	}
 }
+
+// Benchmark a encode
+func BenchmarkEncode(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = toArray(
+			Encode(
+				toChannel(
+					[]int{3, 0, 2, 1, 1, 2})))
+
+	}
+}
+
+func BenchmarkDecode(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		actualChan, decodeError := Decode(
+			toChannel(
+				[]int{3, 0, 1, 1, 2, 2}))
+		_ = toArray(actualChan)
+		if *decodeError {
+			b.FailNow()
+		}
+	}
+}
